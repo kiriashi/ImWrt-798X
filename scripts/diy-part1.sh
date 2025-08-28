@@ -21,6 +21,8 @@ git clone https://github.com/xiaorouji/openwrt-passwall2.git
 echo 'src-git qmodem https://github.com/FUjr/QModem.git;main' >> "feeds.conf.default"
 echo "src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main" >> "feeds.conf.default"
 
+sed -i 's/msgstr \"Socat\"/msgstr \"端口转发\"/' package/luci-app-socat/luci-app-socat/po/zh-cn/socat.po
+
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
