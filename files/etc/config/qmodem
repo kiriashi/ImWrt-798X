@@ -1,0 +1,5 @@
+
+config main 'main'
+	option enable_dial '0'
+	option start_delay '0'
+

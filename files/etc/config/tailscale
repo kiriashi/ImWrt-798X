@@ -1,0 +1,17 @@
+
+config tailscale 'settings'
+	option enabled '0'
+	option port '41641'
+	option config_path '/etc/tailscale'
+	option fw_mode 'nftables'
+	option log_stdout '0'
+	option log_stderr '1'
+	option accept_dns '0'
+	option accept_routes '1'
+	option advertise_exit_node '1'
+	list advertise_routes '10.0.0.0/24'
+	option disable_snat_subnet_routes '0'
+	list access 'ts_ac_lan'
+	list access 'ts_ac_wan'
+	list access 'lan_ac_ts'
+

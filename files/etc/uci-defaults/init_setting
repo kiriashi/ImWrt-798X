@@ -1,0 +1,295 @@
+#!/bin/sh
+# 自定义 OpenWrt 初始化脚本
+# 2025.08.28 by 雾岛听风
+
+set -e  # 遇到错误立即退出
+
+# ========== 创建目录 ==========
+new_folder() {
+    DIRS="/mmc/Share /mmc/docker"
+    for d in $DIRS; do
+        if [ ! -d "$d" ]; then
+            mkdir -p "$d"
+            echo "已创建目录: $d"
+        else
+            echo "目录已存在: $d"
+        fi
+    done
+}
+
+
+# ========== 固定 LAN IP ==========
+custom_lan_ip() {
+    if uci show network.lan >/dev/null 2>&1; then
+        current_ip=$(uci get network.lan.ipaddr 2>/dev/null || echo "")
+        if [ "$current_ip" != "10.0.0.1" ]; then
+            uci set network.lan.ipaddr='10.0.0.1'
+            uci commit network
+            /etc/init.d/network restart 2>/dev/null || true  # 重启网络使 IP 生效
+            echo "LAN IP 已固定为 10.0.0.1"
+        else
+            echo "LAN IP 已为 10.0.0.1，无需修改"
+        fi
+    else
+        echo "network.lan 配置不存在，跳过 LAN IP 固定"
+    fi
+}
+
+
+# ========== 清理失效的 OPKG feed ==========
+custom_opkg() {
+    DISTFEEDS="/etc/opkg/distfeeds.conf"
+    # 先判断文件是否存在
+    if [ -f "$DISTFEEDS" ]; then
+        # 删除 nikki feed
+        sed -i '/^src\/gz immortalwrt_nikki https:\/\/mirrors\.vsean\.net\/openwrt\/releases\/24\.10-SNAPSHOT\/packages\/aarch64_cortex-a53\/nikki$/d' "$DISTFEEDS"
+        # 删除 qmodem feed
+        sed -i '/^src\/gz immortalwrt_qmodem https:\/\/mirrors\.vsean\.net\/openwrt\/releases\/24\.10-SNAPSHOT\/packages\/aarch64_cortex-a53\/qmodem$/d' "$DISTFEEDS"
+        echo "已清理自定义 OPKG feed"
+    else
+        echo "$DISTFEEDS 文件不存在，跳过 OPKG feed 清理"
+    fi
+}
+
+# ========== 自定义登录 Banner ==========
+custom_banner() {
+    cat > /etc/banner <<'EOF'
+.___                               __         .__
+|   | _____   _____   ____________/  |______  |  |
+|   |/     \ /     \ /  _ \_  __ \   __\__  \ |  |
+|   |  Y Y  \  Y Y  (  <_> )  | \/|  |  / __ \|  |__
+|___|__|_|  /__|_|  /\____/|__|   |__| (____  /____/
+  定制版  \/      \/ 2025.08.21 by 雾岛听风 \/
+
+EOF
+
+    if ! grep -q "### custom-banner-start ###" /etc/profile; then
+        cat >> /etc/profile <<'EOF'
+### custom-banner-start ###
+show_banner() {
+    line="-----------------------------------------------------"
+    load=$(awk '{print $3}' /proc/loadavg)
+    avail_kb=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
+    mem_free_mb=$((avail_kb / 1024))
+    temp=$(awk '{printf("%.0f°C",$1/1000)}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+    disk_avail=$(df -h /dev/mmcblk0p6 | awk 'NR==2 {print $4}')
+
+    echo "$line"
+    printf "系统负载: %-20s 空闲内存: %4d MB\n" "$load" "$mem_free_mb"
+    printf "设备温度: %-21s 剩余存储:  %s\n" "$temp" "$disk_avail"
+    echo "$line"
+}
+show_banner
+### custom-banner-end ###
+EOF
+    fi
+}
+
+# ========== sysctl 优化 ==========
+custom_sysctl() {
+    SYSCTL_CONF="/etc/sysctl.conf"
+    touch "$SYSCTL_CONF"
+    add_sysctl_param() {
+        key="$1"
+        value="$2"
+        desc="$3"
+        if ! grep -q "^$key" "$SYSCTL_CONF" 2>/dev/null; then
+            echo "" >> "$SYSCTL_CONF"
+            [ -n "$desc" ] && echo "# $desc" >> "$SYSCTL_CONF"
+            echo "$key = $value" >> "$SYSCTL_CONF"
+            echo "已添加 sysctl 参数: $key = $value"
+        else
+            echo "sysctl 参数 $key 已存在，跳过"
+        fi
+    }
+
+    # 内存优化
+    add_sysctl_param "vm.overcommit_memory" "1" "允许内存超卖"
+    add_sysctl_param "vm.swappiness" "5" "尽量少用 swap"
+    add_sysctl_param "vm.nr_hugepages" "0" "禁用 THP"
+    add_sysctl_param "vm.min_free_kbytes" "8192" "内存保留"
+
+    # 文件句柄
+    add_sysctl_param "fs.file-max" "262144" "文件句柄数量"
+
+    # TCP / 网络优化
+    add_sysctl_param "net.core.somaxconn" "1024" "TCP 半连接队列"
+    add_sysctl_param "net.ipv4.tcp_max_syn_backlog" "2048" "TCP 最大 SYN 队列"
+    add_sysctl_param "net.core.netdev_max_backlog" "1024" "网络设备队列"
+    add_sysctl_param "net.ipv4.tcp_fin_timeout" "30" "TCP FIN 超时"
+    add_sysctl_param "net.ipv4.tcp_tw_reuse" "1" "允许重用 TIME_WAIT 套接字"
+    add_sysctl_param "net.ipv4.tcp_syncookies" "1" "启用 SYN Cookies"
+
+    # 立即应用配置（忽略临时生效失败）
+    sysctl -p >/dev/null 2>&1 || true
+}
+
+# ========== 关闭 DNS 重定向 ==========
+dns_redirect_off() {
+    uci -q delete dhcp.@dnsmasq[0].dns_redirect
+    uci -q delete dhcp.@dnsmasq[0].port
+    uci commit dhcp
+    if [ -x /etc/init.d/dnsmasq ]; then
+        /etc/init.d/dnsmasq restart 2>/dev/null || true
+    fi
+}
+
+# ========== 开启 SSH 网关端口 ==========
+enable_gateway_ports() {
+    if uci show dropbear.@dropbear[0] >/dev/null 2>&1; then
+        uci set dropbear.@dropbear[0].GatewayPorts='on'
+        uci commit dropbear
+        /etc/init.d/dropbear restart
+        echo "已启用 GatewayPorts"
+    else
+        echo "dropbear 配置不存在，跳过 GatewayPorts 配置"
+    fi
+}
+
+# ========== 开机自动映射主机名 ==========
+add_hosts_sync_service() {
+    cat > /etc/init.d/hosts_sync <<'EOF'
+#!/bin/sh /etc/rc.common
+# 开机启动脚本：保证 LAN 口 IP 映射到主机名 IMMORTALWRT
+
+START=99
+STOP=10
+
+start() {
+    update_hosts
+}
+
+stop() {
+    sed -i '/[[:space:]]IMMORTALWRT$/d' /etc/hosts
+}
+
+update_hosts() {
+    LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null)
+    [ -z "$LAN_IP" ] && return 0
+
+    # 删除旧的 IMMORTALWRT 记录
+    sed -i '/[[:space:]]IMMORTALWRT$/d' /etc/hosts
+    # 删除旧的相同 IP 映射
+    sed -i "/^$LAN_IP[[:space:]]/d" /etc/hosts
+    # 添加新的映射
+    echo "$LAN_IP IMMORTALWRT" >> /etc/hosts
+}
+EOF
+
+    chmod +x /etc/init.d/hosts_sync
+    /etc/init.d/hosts_sync enable
+}
+
+
+# ========== 防火墙配置 ==========
+custom_firewall() {
+    add_firewall_rule() {
+        local rule_name=$1
+        local src=$2
+        local proto=$3
+        local dest_ports=$4
+        # 先检查规则是否已存在，存在则跳过
+        if ! uci show firewall | grep -q "name='$rule_name'"; then
+            uci add firewall rule
+            uci set firewall.@rule[-1].name="$rule_name"
+            uci set firewall.@rule[-1].src="$src"
+            uci add_list firewall.@rule[-1].proto="$proto"
+            # 拆分端口列表，逐个添加
+            for port in $dest_ports; do
+                uci add_list firewall.@rule[-1].dest_port="$port"
+            done
+            uci set firewall.@rule[-1].target='ACCEPT'
+            echo "已添加防火墙规则: $rule_name"
+        else
+            echo "防火墙规则 $rule_name 已存在，跳过"
+        fi
+    }
+    # 调用函数添加规则
+    add_firewall_rule "Allow-Tailscale" "wan" "udp" "41641 3478"
+    add_firewall_rule "Allow-KMS" "wan" "tcp" "1688"
+    add_firewall_rule "KSMBD-TCP" "lan" "tcp" "139 445"
+    add_firewall_rule "KSMBD-UDP" "lan" "udp" "137 138 5353"
+    uci commit firewall
+    /etc/init.d/firewall restart  # 确保防火墙规则生效
+}
+
+# ========== KSMBD 配置模板 ==========
+custom_ksmbd_template() {
+    local template="/etc/ksmbd/ksmbd.conf.template"
+    if [ ! -f "$template.bak" ]; then
+        if [ -f "$template" ]; then
+            cp "$template" "$template.bak"
+        fi
+        cat > "$template" <<'EOF'
+[global]
+    netbios name = |NAME|
+    server string = |DESCRIPTION|
+    workgroup = |WORKGROUP|
+    interfaces = |INTERFACES|
+    bind interfaces only = yes
+    ipc timeout = 20
+    deadtime = 15
+    map to guest = Bad User
+    smb2 max read = 1024K
+    smb2 max write = 1024K
+    smb2 max trans = 1024K
+    cache read buffers = yes
+    cache trans buffers = yes
+EOF
+        echo "已创建 KSMBD 配置模板"
+    else
+        echo "KSMBD 配置模板备份已存在，跳过"
+    fi
+
+    /etc/init.d/ksmbd restart
+}
+
+# ========== Avahi ==========
+custom_avahi_daemon() {
+    cat > /etc/avahi/avahi-daemon.conf <<'EOF'
+[server]
+host-name=IMMORTALWRT
+use-ipv4=yes
+use-ipv6=yes
+check-response-ttl=no
+use-iff-running=no
+
+[publish]
+publish-addresses=yes
+publish-hinfo=yes
+publish-workstation=yes
+publish-domain=yes
+
+[reflector]
+enable-reflector=no
+reflect-ipv=no
+
+[rlimits]
+rlimit-core=0
+rlimit-data=4194304
+rlimit-fsize=0
+rlimit-nofile=30
+rlimit-stack=4194304
+rlimit-nproc=3
+EOF
+    /etc/init.d/avahi-daemon enable
+    /etc/init.d/avahi-daemon restart
+    echo "Avahi 配置已应用并服务已重启"
+}
+
+
+# ========== 主执行 ==========
+new_folder
+custom_lan_ip
+custom_opkg
+custom_banner
+custom_sysctl
+dns_redirect_off
+enable_gateway_ports
+add_hosts_sync_service
+custom_firewall
+custom_ksmbd_template
+custom_avahi_daemon
+
+exit 0
+
