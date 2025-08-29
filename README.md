@@ -4,14 +4,8 @@
 
 ## 功能
 - **支持的设备**：
-  - cmcc_a10
   - cmcc_rax3000m
   - cmcc_rax3000m-emmc
-  - cmcc_rax3000m-emmc-usboffload
-  - cmcc_rax3000m-usboffload
-  - cmcc_rax3000me
-  - cmcc_xr30
-  - cmcc_xr30-emmc
 - **自动编译**：每天（北京时间 08:00）检查源仓库更新，若有新提交，自动为所有 CMCC 机型编译固件。
 - **5G 25dB 增强**：支持启用 5G 高功率模式（默认启用，定时编译时固定启用，手动编译可选）。
 - **固件上传**：仅上传 `sysupgrade.bin` 文件到 GitHub Release 和 WebDAV，无 ZIP 压缩。

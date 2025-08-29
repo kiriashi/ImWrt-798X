@@ -55,7 +55,7 @@ env:
   REPO_URL: ${{ github.event.inputs.repo_url || 'https://github.com/padavanonly/immortalwrt-mt798x-24.10' }}
   REPO_BRANCH: ${{ github.event.inputs.repo_branch || 'openwrt-24.10-6.6' }}
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 24.10-6.6.config
+  CONFIG_FILE: .config
   DIY_P1_SH: scripts/diy-part1.sh
   DIY_P2_SH: scripts/diy-part2.sh
   UPLOAD_FIRMWARE: true
@@ -251,6 +251,14 @@ jobs:
           else
           echo "EEPROM 文件无需修改: $EEPROM_FILE"
           fi
+
+      - name: 缓存 dl
+        uses: actions/cache@v3
+        with:
+          path: dl
+          key: ${{ runner.os }}-openwrt-dl-${{ hashFiles('feeds.conf.default') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-dl-
 
       - name: 编译固件
         id: compile
