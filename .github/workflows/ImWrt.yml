@@ -137,16 +137,28 @@ jobs:
         run: |
           MIN_SPACE=10
           AVAILABLE=$(df --output=avail -B G . | tail -n 1 | tr -d ' ')
-          if [ -z "$AVAILABLE" ] || [ "$AVAILABLE" -lt "$MIN_SPACE" ]; then
-            echo "错误：磁盘空间不足，可用空间 ${AVAILABLE}G，需至少 ${MIN_SPACE}G"
-            exit 1
-          fi
           echo "可用磁盘空间：${AVAILABLE}G"
+          if [ -z "$AVAILABLE" ] || [ "$AVAILABLE" -lt "$MIN_SPACE" ]; then
+            echo "磁盘空间不足，尝试清理 /workdir/openwrt/dl 和 /workdir/openwrt/build_dir"
+            rm -rf /workdir/openwrt/dl/*
+            rm -rf /workdir/openwrt/build_dir/*
+            AVAILABLE=$(df --output=avail -B G . | tail -n 1 | tr -d ' ')
+            echo "清理后可用磁盘空间：${AVAILABLE}G"
+            if [ "$AVAILABLE" -lt "$MIN_SPACE" ]; then
+              echo "错误：清理后仍不足 ${MIN_SPACE}G"
+              exit 1
+            fi
+          fi
 
       - name: 初始化环境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          # 清理 runner 缓存和日志
+          sudo rm -rf /home/runner/actions-runner/cached/*
+          sudo rm -rf /home/runner/actions-runner/_diag/*
+          sudo du -sh /home/runner/actions-runner/*
+
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
           sudo apt-get update -y
@@ -168,7 +180,7 @@ jobs:
         run: |
           echo "export PATH=/usr/lib/ccache:$PATH" >> $GITHUB_ENV
           echo "export CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-          ccache -M 5G
+          ccache -M 3G   # 限制 ccache 最大容量为 3G
 
       - name: 安装 GitHub CLI
         run: |
@@ -266,7 +278,7 @@ jobs:
         run: |
           set -e
           cd openwrt
-          make -j$(nproc) V=s || make -j4 V=s || make -j1 V=s
+          make -j$(nproc) || make -j4
           echo "status=success" >> $GITHUB_OUTPUT
           echo "DEVICE_NAME=_${{ matrix.device_model }}" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV

@@ -27,5 +27,10 @@ sed -i 's/msgstr \"Socat\"/msgstr \"端口转发\"/' package/luci-app-socat/luci
 ./scripts/feeds install -a
 
 rm -rf  ./feeds/packages/net/speedtest-cli
+rm -rf feeds/packages/net/v2ray-geodata
 rm -rf feeds/packages/lang/golang
 git clone https://github.com/sbwml/packages_lang_golang -b 24.x feeds/packages/lang/golang
+make package/mosdns/luci-app-mosdns/compile
+make package/openlist/luci-app-openlist2/compile
+./scripts/feeds install -a -f -p qmodem
+

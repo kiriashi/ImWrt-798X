@@ -246,6 +246,11 @@ EOF
 
 # ========== Avahi ==========
 custom_avahi_daemon() {
+    if [ -f /etc/avahi/avahi-daemon.conf ]; then
+        cp /etc/avahi/avahi-daemon.conf "/etc/avahi/avahi-daemon.conf.bak.$(date +%Y%m%d%H%M%S)"
+    fi
+
+    # 写入新配置
     cat > /etc/avahi/avahi-daemon.conf <<'EOF'
 [server]
 host-name=IMMORTALWRT
@@ -272,9 +277,11 @@ rlimit-nofile=30
 rlimit-stack=4194304
 rlimit-nproc=3
 EOF
+
     /etc/init.d/avahi-daemon enable
     /etc/init.d/avahi-daemon restart
-    echo "Avahi 配置已应用并服务已重启"
+
+    echo "Avahi 配置已应用并服务已重启（原配置已备份）"
 }
 
 

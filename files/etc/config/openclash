@@ -388,4 +388,3 @@ config config_subscribe
 	option convert_address 'https://api.dler.io/sub'
 	option template '0'
 	option custom_template_url 'https://gh-proxy.com/https://raw.githubusercontent.com/kiriashi/static/refs/heads/main/ACL4SSR_Online_Full_Mannix.ini'
-
