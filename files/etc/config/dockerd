@@ -1,9 +1,9 @@
-
 config globals 'globals'
 	option data_root '/mmc/docker/'
 	option log_level 'warn'
 	option iptables '1'
 	option auto_start '1'
+	list registry_mirrors 'https://docker.gh-proxy.com'
 
 config proxies 'proxies'
 
@@ -14,5 +14,3 @@ config dockerman 'dockerman'
 	option debug_path '/tmp/.docker_debug'
 	option remote_endpoint '0'
 	list ac_allowed_interface 'br-lan'
-
-
