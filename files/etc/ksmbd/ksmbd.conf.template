@@ -1,0 +1,29 @@
+[global]
+# --- 基础设置 ---
+    netbios name = |NAME|
+    server string = |DESCRIPTION|
+    workgroup = |WORKGROUP|
+    interfaces = |INTERFACES|
+    bind interfaces only = yes
+    ipc timeout = 20
+    deadtime = 15
+    map to guest = Bad User
+    # --- 协议版本与安全 ---
+    server min protocol = SMB3_00
+    # --- 性能优化 ---
+    # 启用 SMB3 多通道支持
+    server multi channel support = yes
+    # 启用 sendfile 零拷贝 (关键)
+    use sendfile = yes
+    # 启用 Oplocks 客户端缓存
+    oplocks = yes
+    # 优化 TCP Socket 参数
+    socket options = TCP_NODELAY IPTOS_LOWDELAY SO_RCVBUF=131072 SO_SNDBUF=131072
+    # --- 读写尺寸优化 ---
+    # 增大单次请求/响应的最大值，减少协议开销。
+    smb2 max read = 1024K
+    smb2 max write = 1024K
+    smb2 max trans = 1024K
+    # --- 旧式缓存 ---
+    cache read buffers = yes
+    cache trans buffers = yes
